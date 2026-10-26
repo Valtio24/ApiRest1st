@@ -1,7 +1,42 @@
 const express = require('express');
+const jwt = require('jsonwebtoken');
 const app = express();
 
 app.use(express.json());
+
+const JWT_SECRET = process.env.JWT_SECRET || 'ma_cle_secrete_de_dev';
+
+const Users = [
+    { id: 1, username: 'admin', password: 'admin123' }
+];
+
+app.post('/login', (req, res) => {
+    const { username, password } = req.body || {};
+    if (!username || !password) {
+        return res.status(400).json({ erreur: "username et password requis" });
+    }
+    const user = Users.find(u => u.username === username && u.password === password);
+    if (!user) {
+        return res.status(401).json({ erreur: "Identifiants invalides" });
+    }
+    const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '1h' });
+    res.json({ token });
+});
+
+function authenticateToken(req, res, next) {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    if (!token) {
+        return res.status(401).json({ erreur: "Token manquant" });
+    }
+    jwt.verify(token, JWT_SECRET, (err, user) => {
+        if (err) {
+            return res.status(403).json({ erreur: "Token invalide ou expiré" });
+        }
+        req.user = user;
+        next();
+    });
+}
 
 app.get('/', (req, res) => {
     res.send('API OK');
@@ -36,7 +71,7 @@ app.get('/products/:id', (req, res) => {
 
 });
 
-app.post('/products', (req, res) => {
+app.post('/products', authenticateToken, (req, res) => {
     const body = req.body;
     if (!body.name) {
         return res.status(400).json({ erreur: "Champs Manquant" });
@@ -55,14 +90,14 @@ app.post('/products', (req, res) => {
     res.status(201).json('Created')
 });
 
-app.delete('/products/:id', (req, res) => {
+app.delete('/products/:id', authenticateToken, (req, res) => {
     delete Products[req.params.id]
     res.status(204).json('deleted')
 })
 
 
 
-app.put('/products/:id', (req, res) => {
+app.put('/products/:id', authenticateToken, (req, res) => {
     const id = Number(req.params.id);
     const body = req.body;
     if (!body.name) {
